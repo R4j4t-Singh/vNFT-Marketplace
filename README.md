@@ -1,4 +1,4 @@
-Chingari NFT MarketPlace
+NFT MarketPlace
 
 ![image](https://user-images.githubusercontent.com/76911341/227898070-d6b18f60-8c5d-4fc1-ba55-dcc8617b1a9f.png)
 <br>
