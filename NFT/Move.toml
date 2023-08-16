@@ -3,8 +3,8 @@ name = 'NFT_test2'
 version = '1.0.0'
 [dependencies.AptosFramework]
 git = 'https://github.com/aptos-labs/aptos-core.git'
-rev = 'devnet'
+rev = 'testnet'
 subdir = 'aptos-move/framework/aptos-framework'
 
 [addresses]
-NamedAddr = "0x2d5b69946f08fc88ba9a48b585cc7d1b56c18fe7b4ccdc2bdc5cfc52ab3ab76b"
+NamedAddr = "0x498efcd91c00a6d1d46e12837a742ca41c6662ed841828867a05379858085c0d"

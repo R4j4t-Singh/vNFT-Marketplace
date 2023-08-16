@@ -15,6 +15,9 @@ module std::vector {
     /// The index into the vector is out of bounds
     const EINVALID_RANGE: u64 = 0x20001;
 
+    /// The length of the vectors are not equal.
+    const EVECTORS_LENGTH_MISMATCH: u64 = 0x20002;
+
     #[bytecode_instruction]
     /// Create an empty vector.
     native public fun empty<Element>(): vector<Element>;
@@ -84,6 +87,9 @@ module std::vector {
             right = right - 1;
         }
     }
+    spec reverse_slice {
+        pragma intrinsic = true;
+    }
 
     /// Pushes all of the elements of the `other` vector into the `lhs` vector.
     public fun append<Element>(lhs: &mut vector<Element>, other: vector<Element>) {
@@ -106,12 +112,18 @@ module std::vector {
         };
         destroy_empty(other);
     }
+    spec reverse_append {
+        pragma intrinsic = true;
+    }
 
     /// Trim a vector to a smaller size, returning the evicted elements in order
     public fun trim<Element>(v: &mut vector<Element>, new_len: u64): vector<Element> {
         let res = trim_reverse(v, new_len);
         reverse(&mut res);
         res
+    }
+    spec trim {
+        pragma intrinsic = true;
     }
 
     /// Trim a vector to a smaller size, returning the evicted elements in reverse order
@@ -124,6 +136,9 @@ module std::vector {
             len = len - 1;
         };
         result
+    }
+    spec trim_reverse {
+        pragma intrinsic = true;
     }
 
 
@@ -172,6 +187,9 @@ module std::vector {
             i = i + 1;
         };
     }
+    spec insert {
+        pragma intrinsic = true;
+    }
 
     /// Remove the `i`th element of the vector `v`, shifting all subsequent elements.
     /// This is O(n) and preserves ordering of elements in the vector.
@@ -186,6 +204,26 @@ module std::vector {
         pop_back(v)
     }
     spec remove {
+        pragma intrinsic = true;
+    }
+
+    /// Remove the first occurrence of a given value in the vector `v` and return it in a vector, shifting all
+    /// subsequent elements.
+    /// This is O(n) and preserves ordering of elements in the vector.
+    /// This returns an empty vector if the value isn't present in the vector.
+    /// Note that this cannot return an option as option uses vector and there'd be a circular dependency between option
+    /// and vector.
+    public fun remove_value<Element>(v: &mut vector<Element>, val: &Element): vector<Element> {
+        // This doesn't cost a O(2N) run time as index_of scans from left to right and stops when the element is found,
+        // while remove would continue from the identified index to the end of the vector.
+        let (found, index) = index_of(v, val);
+        if (found) {
+            vector[remove(v, index)]
+        } else {
+           vector[]
+        }
+    }
+    spec remove_value {
         pragma intrinsic = true;
     }
 
@@ -228,6 +266,61 @@ module std::vector {
         }
     }
 
+    /// Apply the function to each pair of elements in the two given vectors, consuming them.
+    public inline fun zip<Element1, Element2>(v1: vector<Element1>, v2: vector<Element2>, f: |Element1, Element2|) {
+        // We need to reverse the vectors to consume it efficiently
+        reverse(&mut v1);
+        reverse(&mut v2);
+        zip_reverse(v1, v2, |e1, e2| f(e1, e2));
+    }
+
+    /// Apply the function to each pair of elements in the two given vectors in the reverse order, consuming them.
+    /// This errors out if the vectors are not of the same length.
+    public inline fun zip_reverse<Element1, Element2>(
+        v1: vector<Element1>,
+        v2: vector<Element2>,
+        f: |Element1, Element2|,
+    ) {
+        let len = length(&v1);
+        // We can't use the constant EVECTORS_LENGTH_MISMATCH here as all calling code would then need to define it
+        // due to how inline functions work.
+        assert!(len == length(&v2), 0x20002);
+        while (len > 0) {
+            f(pop_back(&mut v1), pop_back(&mut v2));
+            len = len - 1;
+        };
+        destroy_empty(v1);
+        destroy_empty(v2);
+    }
+
+    /// Apply the function to the references of each pair of elements in the two given vectors.
+    /// This errors out if the vectors are not of the same length.
+    public inline fun zip_ref<Element1, Element2>(
+        v1: &vector<Element1>,
+        v2: &vector<Element2>,
+        f: |&Element1, &Element2|,
+    ) {
+        let len = length(v1);
+        // We can't use the constant EVECTORS_LENGTH_MISMATCH here as all calling code would then need to define it
+        // due to how inline functions work.
+        assert!(len == length(v2), 0x20002);
+        let i = 0;
+        while (i < len) {
+            f(borrow(v1, i), borrow(v2, i));
+            i = i + 1
+        }
+    }
+
+    /// Apply the function to a reference of each element in the vector with its index.
+    public inline fun enumerate_ref<Element>(v: &vector<Element>, f: |u64, &Element|) {
+        let i = 0;
+        let len = length(v);
+        while (i < len) {
+            f(i, borrow(v, i));
+            i = i + 1;
+        };
+    }
+
     /// Apply the function to a mutable reference to each element in the vector.
     public inline fun for_each_mut<Element>(v: &mut vector<Element>, f: |&mut Element|) {
         let i = 0;
@@ -236,6 +329,34 @@ module std::vector {
             f(borrow_mut(v, i));
             i = i + 1
         }
+    }
+
+    /// Apply the function to mutable references to each pair of elements in the two given vectors.
+    /// This errors out if the vectors are not of the same length.
+    public inline fun zip_mut<Element1, Element2>(
+        v1: &mut vector<Element1>,
+        v2: &mut vector<Element2>,
+        f: |&mut Element1, &mut Element2|,
+    ) {
+        let i = 0;
+        let len = length(v1);
+        // We can't use the constant EVECTORS_LENGTH_MISMATCH here as all calling code would then need to define it
+        // due to how inline functions work.
+        assert!(len == length(v2), 0x20002);
+        while (i < len) {
+            f(borrow_mut(v1, i), borrow_mut(v2, i));
+            i = i + 1
+        }
+    }
+
+    /// Apply the function to a mutable reference of each element in the vector with its index.
+    public inline fun enumerate_mut<Element>(v: &mut vector<Element>, f: |u64, &mut Element|) {
+        let i = 0;
+        let len = length(v);
+        while (i < len) {
+            f(i, borrow_mut(v, i));
+            i = i + 1;
+        };
     }
 
     /// Fold the function over the elements. For example, `fold(vector[1,2,3], 0, f)` will execute
@@ -263,13 +384,29 @@ module std::vector {
     }
 
     /// Map the function over the references of the elements of the vector, producing a new vector without modifying the
-    /// original map.
+    /// original vector.
     public inline fun map_ref<Element, NewElement>(
         v: &vector<Element>,
         f: |&Element|NewElement
     ): vector<NewElement> {
         let result = vector<NewElement>[];
         for_each_ref(v, |elem| push_back(&mut result, f(elem)));
+        result
+    }
+
+    /// Map the function over the references of the element pairs of two vectors, producing a new vector from the return
+    /// values without modifying the original vectors.
+    public inline fun zip_map_ref<Element1, Element2, NewElement>(
+        v1: &vector<Element1>,
+        v2: &vector<Element2>,
+        f: |&Element1, &Element2|NewElement
+    ): vector<NewElement> {
+        // We can't use the constant EVECTORS_LENGTH_MISMATCH here as all calling code would then need to define it
+        // due to how inline functions work.
+        assert!(length(v1) == length(v2), 0x20002);
+
+        let result = vector<NewElement>[];
+        zip_ref(v1, v2, |e1, e2| push_back(&mut result, f(e1, e2)));
         result
     }
 
@@ -280,6 +417,21 @@ module std::vector {
     ): vector<NewElement> {
         let result = vector<NewElement>[];
         for_each(v, |elem| push_back(&mut result, f(elem)));
+        result
+    }
+
+    /// Map the function over the element pairs of the two vectors, producing a new vector.
+    public inline fun zip_map<Element1, Element2, NewElement>(
+        v1: vector<Element1>,
+        v2: vector<Element2>,
+        f: |Element1, Element2|NewElement
+    ): vector<NewElement> {
+        // We can't use the constant EVECTORS_LENGTH_MISMATCH here as all calling code would then need to define it
+        // due to how inline functions work.
+        assert!(length(&v1) == length(&v2), 0x20002);
+
+        let result = vector<NewElement>[];
+        zip(v1, v2, |e1, e2| push_back(&mut result, f(e1, e2)));
         result
     }
 
@@ -329,6 +481,9 @@ module std::vector {
         let len = length(v);
         rotate_slice(v, 0, rot, len)
     }
+    spec rotate {
+        pragma intrinsic = true;
+    }
 
     /// Same as above but on a sub-slice of an array [left, right) with left <= rot <= right
     /// returns the
@@ -342,6 +497,9 @@ module std::vector {
         reverse_slice(v, rot, right);
         reverse_slice(v, left, right);
         left + (right - rot)
+    }
+    spec rotate_slice {
+        pragma intrinsic = true;
     }
 
     /// Partition the array based on a predicate p, this routine is stable and thus

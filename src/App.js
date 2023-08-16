@@ -189,7 +189,7 @@ function App() {
                 justifyContent: "center",
               }}
             >
-            {video.mint==""?<button
+            {video.mint===""?<button
                 className="mint-nft-btn"
                 onClick={() => mint(video.cid)}
               >
